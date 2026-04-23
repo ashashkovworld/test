@@ -1,0 +1,206 @@
+{
+  "blocks": [
+    {
+      "block_id": "capacity_1",
+      "name": "Бак",
+      "kind": "capacity",
+      "x": 86.0,
+      "y": 69.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 22.0,
+      "initial_mass_kg": 15.0,
+      "diameter_mm": 0.0,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": true,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "valve_1",
+      "name": "Клапан 1",
+      "kind": "valve",
+      "x": 85.0,
+      "y": 169.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 1.0,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": false,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "orifice_1",
+      "name": "Дроссель 1",
+      "kind": "orifice",
+      "x": 236.0,
+      "y": 169.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 0.1,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "capacity_2",
+      "name": "РВД",
+      "kind": "capacity",
+      "x": 386.0,
+      "y": 169.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.01,
+      "initial_mass_kg": 0.0001,
+      "diameter_mm": 0.0,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": true,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "valve_2",
+      "name": "Клапан 2",
+      "kind": "valve",
+      "x": 543.0,
+      "y": 170.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 1.0,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": false,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "orifice_2",
+      "name": "Дроссель 2",
+      "kind": "orifice",
+      "x": 543.0,
+      "y": 249.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 0.1,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "capacity_3",
+      "name": "РНД",
+      "kind": "capacity",
+      "x": 387.0,
+      "y": 249.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.35,
+      "initial_mass_kg": 0.002,
+      "diameter_mm": 0.0,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": true,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "orifice_4",
+      "name": "Дроссель А",
+      "kind": "orifice",
+      "x": 220.0,
+      "y": 303.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 0.064,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "orifice_5",
+      "name": "Дроссель К",
+      "kind": "orifice",
+      "x": 361.0,
+      "y": 355.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 0.014,
+      "length_m": 0.0,
+      "pressure_bar": 1.01325,
+      "is_open": true,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    },
+    {
+      "block_id": "environment_2",
+      "name": "вакуум",
+      "kind": "environment",
+      "x": 215.0,
+      "y": 474.0,
+      "temperature_celsius": 20.0,
+      "volume_liters": 0.0,
+      "initial_mass_kg": 0.0,
+      "diameter_mm": 0.0,
+      "length_m": 0.0,
+      "pressure_bar": 0.001325,
+      "is_open": true,
+      "plot_enabled": false,
+      "plot_parameter": "pressure"
+    }
+  ],
+  "connections": [
+    {
+      "source_block_id": "capacity_1",
+      "target_block_id": "valve_1"
+    },
+    {
+      "source_block_id": "valve_1",
+      "target_block_id": "orifice_1"
+    },
+    {
+      "source_block_id": "orifice_1",
+      "target_block_id": "capacity_2"
+    },
+    {
+      "source_block_id": "capacity_2",
+      "target_block_id": "valve_2"
+    },
+    {
+      "source_block_id": "valve_2",
+      "target_block_id": "orifice_2"
+    },
+    {
+      "source_block_id": "orifice_2",
+      "target_block_id": "capacity_3"
+    },
+    {
+      "source_block_id": "orifice_5",
+      "target_block_id": "environment_2"
+    },
+    {
+      "source_block_id": "orifice_4",
+      "target_block_id": "environment_2"
+    },
+    {
+      "source_block_id": "capacity_3",
+      "target_block_id": "orifice_4"
+    },
+    {
+      "source_block_id": "capacity_3",
+      "target_block_id": "orifice_5"
+    }
+  ]
+}

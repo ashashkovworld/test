@@ -1,168 +1,212 @@
-"""math_model.py: contains the physics and numerical formulas of the model.
+"""math_model.py: physics helpers for block-based gas-system simulation.
 
-This module is responsible for:
-- converting gas mass inside the vessel into pressure;
-- calculating outflow through the orifice;
-- defining the differential equation for gas mass change;
-- integrating that equation one step forward in time.
+Each block kind has its own local model:
+- capacity: stores mass and converts it to pressure through the ideal gas law;
+- tube: stores mass, has its own volume, and contributes a flow area;
+- valve: behaves like a tube when open and blocks flow when closed;
+- orifice: contributes the narrow restriction area;
+- environment: supplies a constant boundary pressure and acts as an infinite sink.
+
+The simulation engine combines these local block models along connection paths.
 """
 
+from __future__ import annotations
+
 from dataclasses import dataclass
-from math import sqrt
+from math import pi, sqrt
 
 from gas_system_sim.physical_constants import PhysicalConstants
-from gas_system_sim.system_config import SystemConfiguration
+from gas_system_sim.system_config import BlockConfig
 
 
 @dataclass(frozen=True)
-class ModelState:
-    """Represents one fully evaluated physical state of the vessel."""
+class PathFlowReport:
+    """Describes one resolved flow segment between two storage-like nodes."""
 
-    time_seconds: float
-    gas_mass_kg: float
-    pressure_pa: float
+    upstream_block_id: str
+    downstream_block_id: str
+    traversed_block_ids: list[str]
+    upstream_pressure_pa: float
+    downstream_pressure_pa: float
     mass_flow_kg_s: float
+    representative_temperature_kelvin: float
 
 
-def pressure_from_mass(
+def temperature_kelvin(block: BlockConfig) -> float:
+    """Converts the configured block temperature from Celsius to kelvin."""
+
+    return block.temperature_celsius + 273.15
+
+
+def area_from_diameter_mm(diameter_mm: float) -> float:
+    """Converts a diameter in millimeters into a circular flow area in m²."""
+
+    radius_m = diameter_mm / 1000.0 / 2.0
+    return pi * radius_m * radius_m
+
+
+def capacity_pressure_pa(
+    block: BlockConfig,
     gas_mass_kg: float,
-    configuration: SystemConfiguration,
     constants: PhysicalConstants,
 ) -> float:
-    """Computes vessel pressure using the ideal gas law in SI units."""
+    """Returns the pressure inside a capacity block using the ideal gas law."""
 
+    volume_m3 = block.volume_liters / 1000.0
+    return gas_mass_kg * constants.specific_gas_constant * temperature_kelvin(block) / volume_m3
+
+
+def tube_volume_m3(block: BlockConfig) -> float:
+    """Returns the gas volume inside the tube from diameter and length."""
+
+    return area_from_diameter_mm(block.diameter_mm) * block.length_m
+
+
+def tube_pressure_pa(
+    block: BlockConfig,
+    gas_mass_kg: float,
+    constants: PhysicalConstants,
+) -> float:
+    """Returns the pressure inside a tube treated as a finite gas volume."""
+
+    volume_m3 = tube_volume_m3(block)
+    if volume_m3 <= 0.0:
+        return 0.0
+    return gas_mass_kg * constants.specific_gas_constant * temperature_kelvin(block) / volume_m3
+
+
+def capacity_equilibrium_mass_kg(
+    block: BlockConfig,
+    ambient_pressure_pa: float,
+    constants: PhysicalConstants,
+) -> float:
+    """Mass remaining in a capacity when it reaches the target ambient pressure."""
+
+    volume_m3 = block.volume_liters / 1000.0
     return (
-        gas_mass_kg
-        * constants.specific_gas_constant
-        * configuration.vessel_temperature_kelvin
-        / configuration.vessel_volume_m3
+        ambient_pressure_pa
+        * volume_m3
+        / (constants.specific_gas_constant * temperature_kelvin(block))
     )
 
 
-def equilibrium_gas_mass_kg(
-    configuration: SystemConfiguration,
+def tube_equilibrium_mass_kg(
+    block: BlockConfig,
+    ambient_pressure_pa: float,
     constants: PhysicalConstants,
 ) -> float:
-    """Mass that remains when vessel pressure becomes equal to ambient pressure."""
+    """Mass remaining in a tube when it reaches the target pressure."""
 
+    volume_m3 = tube_volume_m3(block)
     return (
-        configuration.ambient_pressure_pa
-        * configuration.vessel_volume_m3
-        / (constants.specific_gas_constant * configuration.vessel_temperature_kelvin)
+        ambient_pressure_pa
+        * volume_m3
+        / (constants.specific_gas_constant * temperature_kelvin(block))
     )
+
+
+def environment_pressure_pa(block: BlockConfig) -> float:
+    """Returns the constant pressure of the external environment in pascals."""
+
+    return block.pressure_bar * 100_000.0
+
+
+def tube_effective_area_m2(block: BlockConfig) -> float:
+    """Returns the flow area of a tube block."""
+
+    return area_from_diameter_mm(block.diameter_mm)
+
+
+def orifice_effective_area_m2(block: BlockConfig) -> float:
+    """Returns the flow area of a throttle washer block."""
+
+    return area_from_diameter_mm(block.diameter_mm)
+
+
+def valve_effective_area_m2(block: BlockConfig) -> float:
+    """Returns zero for a closed valve or the valve area for an open valve."""
+
+    if not block.is_open:
+        return 0.0
+    return area_from_diameter_mm(block.diameter_mm)
+
+
+def block_effective_area_m2(block: BlockConfig) -> float:
+    """Returns the area contribution of a block in a discharge path."""
+
+    if block.kind == "tube":
+        return tube_effective_area_m2(block)
+    if block.kind == "valve":
+        return valve_effective_area_m2(block)
+    if block.kind == "orifice":
+        return orifice_effective_area_m2(block)
+    return float("inf")
+
+
+def block_has_flow_model(block: BlockConfig) -> bool:
+    """Returns ``True`` for flow elements that restrict a path."""
+
+    return block.kind in {"tube", "valve", "orifice"}
+
+
+def block_is_storage(block: BlockConfig) -> bool:
+    """Returns ``True`` for blocks that own gas volume and pressure state."""
+
+    return block.kind in {"capacity", "tube", "environment"}
 
 
 def critical_pressure_ratio(constants: PhysicalConstants) -> float:
-    """Pressure ratio at which the outflow switches to choked flow."""
+    """Returns the pressure ratio that separates choked and subcritical flow."""
 
     kappa = constants.adiabatic_index
     return (2.0 / (kappa + 1.0)) ** (kappa / (kappa - 1.0))
 
 
-def mass_flow_rate_kg_s(
-    pressure_pa: float,
-    configuration: SystemConfiguration,
+def compressible_mass_flow_kg_s(
+    upstream_pressure_pa: float,
+    downstream_pressure_pa: float,
+    effective_area_m2: float,
+    representative_temperature_kelvin: float,
     constants: PhysicalConstants,
+    discharge_coefficient: float = 0.8,
 ) -> float:
-    """Calculates mass flow through the hole for the current vessel pressure.
+    """Computes gas discharge through the path bottleneck.
 
-    Two flow regimes are handled:
-    - choked flow, when the downstream pressure is low enough;
-    - subcritical flow, when the outlet no longer reaches sonic velocity.
+    The formula uses the same compressible-flow approximation as the earlier
+    single-vessel example. The engine feeds it the narrowest effective area
+    found along the whole path.
     """
 
-    if pressure_pa <= configuration.ambient_pressure_pa:
+    if effective_area_m2 <= 0.0 or upstream_pressure_pa <= downstream_pressure_pa:
         return 0.0
 
     kappa = constants.adiabatic_index
     gas_constant = constants.specific_gas_constant
-    temperature_kelvin = configuration.vessel_temperature_kelvin
-    pressure_ratio = configuration.ambient_pressure_pa / pressure_pa
-    area_m2 = configuration.orifice_area_m2
-    coefficient = configuration.discharge_coefficient
+    pressure_ratio = downstream_pressure_pa / upstream_pressure_pa
 
     if pressure_ratio <= critical_pressure_ratio(constants):
-        # Choked flow: the gas velocity at the opening reaches the speed of sound,
-        # so the downstream pressure no longer increases the mass flow.
         flow_factor = sqrt(
             kappa
-            / (gas_constant * temperature_kelvin)
+            / (gas_constant * representative_temperature_kelvin)
             * (2.0 / (kappa + 1.0)) ** ((kappa + 1.0) / (kappa - 1.0))
         )
-        return coefficient * area_m2 * pressure_pa * flow_factor
+        return discharge_coefficient * effective_area_m2 * upstream_pressure_pa * flow_factor
 
-    # Subcritical flow: mass flow depends on the actual pressure ratio between
-    # the inside of the vessel and the ambient environment.
     flow_factor = sqrt(
         (2.0 * kappa)
-        / (gas_constant * temperature_kelvin * (kappa - 1.0))
+        / (gas_constant * representative_temperature_kelvin * (kappa - 1.0))
         * (
             pressure_ratio ** (2.0 / kappa)
             - pressure_ratio ** ((kappa + 1.0) / kappa)
         )
     )
-    return coefficient * area_m2 * pressure_pa * flow_factor
+    return discharge_coefficient * effective_area_m2 * upstream_pressure_pa * flow_factor
 
 
-def mass_derivative_kg_s(
-    gas_mass_kg: float,
-    configuration: SystemConfiguration,
-    constants: PhysicalConstants,
-) -> float:
-    """Defines dm/dt, the rate at which gas mass decreases in the vessel."""
+def representative_path_temperature_kelvin(path_blocks: list[BlockConfig]) -> float:
+    """Returns one representative temperature for the current discharge path."""
 
-    pressure_pa = pressure_from_mass(gas_mass_kg, configuration, constants)
-    return -mass_flow_rate_kg_s(pressure_pa, configuration, constants)
-
-
-def advance_mass_rk4(
-    gas_mass_kg: float,
-    time_step_seconds: float,
-    configuration: SystemConfiguration,
-    constants: PhysicalConstants,
-) -> float:
-    """Advances the gas mass by one step using 4th-order Runge-Kutta.
-
-    RK4 gives better accuracy than a simple Euler step while remaining fast
-    enough for real-time plotting in this small model.
-    """
-
-    k1 = mass_derivative_kg_s(gas_mass_kg, configuration, constants)
-    k2 = mass_derivative_kg_s(
-        gas_mass_kg + 0.5 * time_step_seconds * k1,
-        configuration,
-        constants,
-    )
-    k3 = mass_derivative_kg_s(
-        gas_mass_kg + 0.5 * time_step_seconds * k2,
-        configuration,
-        constants,
-    )
-    k4 = mass_derivative_kg_s(
-        gas_mass_kg + time_step_seconds * k3,
-        configuration,
-        constants,
-    )
-
-    # Prevent the vessel from numerically dropping below the ambient-pressure
-    # equilibrium state, which would be non-physical for this open vessel.
-    next_mass = gas_mass_kg + time_step_seconds * (k1 + 2.0 * k2 + 2.0 * k3 + k4) / 6.0
-    return max(next_mass, equilibrium_gas_mass_kg(configuration, constants))
-
-
-def build_state(
-    time_seconds: float,
-    gas_mass_kg: float,
-    configuration: SystemConfiguration,
-    constants: PhysicalConstants,
-) -> ModelState:
-    """Builds a complete model state from time and current gas mass."""
-
-    pressure_pa = pressure_from_mass(gas_mass_kg, configuration, constants)
-    mass_flow = mass_flow_rate_kg_s(pressure_pa, configuration, constants)
-    return ModelState(
-        time_seconds=time_seconds,
-        gas_mass_kg=gas_mass_kg,
-        pressure_pa=pressure_pa,
-        mass_flow_kg_s=mass_flow,
-    )
+    temperatures = [temperature_kelvin(block) for block in path_blocks]
+    if not temperatures:
+        return 293.15
+    return sum(temperatures) / len(temperatures)

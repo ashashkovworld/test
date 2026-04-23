@@ -1,7 +1,7 @@
-"""main.py: application entry point for running the simulation project.
+"""main.py: application entry point for the block-based gas-system project.
 
-This file wires together the default settings, default configuration,
-physical constants, the simulation engine, and the plotting window.
+In GUI mode the application starts from a separate configurator window that
+acts as a preprocessor before the simulation run.
 """
 
 from pathlib import Path
@@ -15,23 +15,28 @@ if __package__ is None or __package__ == "":
     if str(PACKAGE_ROOT) not in sys.path:
         sys.path.insert(0, str(PACKAGE_ROOT))
 
+from gas_system_sim.configurator_window import show_configurator_window
 from gas_system_sim.physical_constants import DEFAULT_PHYSICAL_CONSTANTS
-from gas_system_sim.plot_window import show_results_window
 from gas_system_sim.settings import DEFAULT_SETTINGS
 from gas_system_sim.simulation_engine import run_simulation
 from gas_system_sim.system_config import DEFAULT_SYSTEM_CONFIG
 
 
 def main() -> None:
-    """Starts the GUI mode or a headless calculation, depending on settings."""
+    """Starts the configurator in GUI mode or a headless batch run."""
 
     if DEFAULT_SETTINGS.show_plots:
-        show_results_window(
+        show_configurator_window(
             settings=DEFAULT_SETTINGS,
-            configuration=DEFAULT_SYSTEM_CONFIG,
             constants=DEFAULT_PHYSICAL_CONSTANTS,
+            configuration=DEFAULT_SYSTEM_CONFIG,
         )
         return
+
+    if DEFAULT_SETTINGS.duration_seconds is None:
+        raise RuntimeError(
+            "Headless mode requires a finite duration_seconds value in settings."
+        )
 
     # Headless mode is useful for tests or quick console verification.
     result = run_simulation(
